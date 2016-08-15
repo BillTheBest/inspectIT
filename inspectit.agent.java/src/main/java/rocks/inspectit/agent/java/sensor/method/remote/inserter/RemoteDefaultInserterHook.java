@@ -6,6 +6,10 @@ import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.kristofa.brave.Brave;
+import com.github.kristofa.brave.ClientRequestAdapter;
+import com.github.kristofa.brave.ClientResponseAdapter;
+
 import rocks.inspectit.agent.java.config.impl.RegisteredSensorConfig;
 import rocks.inspectit.agent.java.core.ICoreService;
 import rocks.inspectit.agent.java.core.IPlatformManager;
@@ -47,6 +51,11 @@ public abstract class RemoteDefaultInserterHook<T extends RemoteCallData> implem
 	protected static final Class<?>[] METHOD_PARAMETER_TWO_STRING_FIELD = new Class<?>[] { String.class, String.class };
 
 	/**
+	 * Brave for handling the client calls.
+	 */
+	private final Brave brave;
+
+	/**
 	 * The Platform manager.
 	 */
 	protected final IPlatformManager platformManager;
@@ -73,10 +82,26 @@ public abstract class RemoteDefaultInserterHook<T extends RemoteCallData> implem
 	 *            The Platform manager
 	 * @param remoteIdentificationManager
 	 *            the remoteIdentificationManager.
+	 *
 	 */
 	protected RemoteDefaultInserterHook(IPlatformManager platformManager, RemoteIdentificationManager remoteIdentificationManager) {
+		this(platformManager, remoteIdentificationManager, null);
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param platformManager
+	 *            The Platform manager
+	 * @param remoteIdentificationManager
+	 *            the remoteIdentificationManager.
+	 * @param brave
+	 *            Brave instance.
+	 */
+	protected RemoteDefaultInserterHook(IPlatformManager platformManager, RemoteIdentificationManager remoteIdentificationManager, Brave brave) {
 		this.platformManager = platformManager;
 		this.remoteIdentificationManager = remoteIdentificationManager;
+		this.brave = brave;
 	}
 
 	/**
@@ -85,6 +110,10 @@ public abstract class RemoteDefaultInserterHook<T extends RemoteCallData> implem
 	public void beforeBody(long methodId, long sensorTypeId, Object object, Object[] parameters, RegisteredSensorConfig rsc) {
 		if (needToInsertInspectItHeader(object, parameters)) {
 			insertInspectItHeader(methodId, sensorTypeId, object, parameters);
+		}
+		if (!refMarker.isMarkerSet()) {
+			ClientRequestAdapter adapter = getClientRequestAdapter(object, parameters, rsc);
+			brave.clientRequestInterceptor().handle(adapter);
 		}
 		refMarker.markCall();
 	}
@@ -172,8 +201,10 @@ public abstract class RemoteDefaultInserterHook<T extends RemoteCallData> implem
 			refMarker.remove();
 			T data = this.threadRemoteCallData.get();
 
-			if (data != null) {
+			ClientResponseAdapter adapter = getClientResponseAdapter(object, parameters, result, rsc);
+			brave.clientResponseInterceptor().handle(adapter);
 
+			if (data != null) {
 				try {
 					long platformId = platformManager.getPlatformId();
 
@@ -197,4 +228,7 @@ public abstract class RemoteDefaultInserterHook<T extends RemoteCallData> implem
 			}
 		}
 	}
+
+	protected abstract ClientRequestAdapter getClientRequestAdapter(Object object, Object[] parameters, RegisteredSensorConfig rsc);
+	protected abstract ClientResponseAdapter getClientResponseAdapter(Object object, Object[] parameters, Object result, RegisteredSensorConfig rsc);
 }

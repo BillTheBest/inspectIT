@@ -61,7 +61,7 @@ public class RemoteJettyHttpClientV61InserterHookTest extends AbstractLogSupport
 	public void initTestClass() {
 		Map<String, String> settings = new HashMap<String, String>();
 		settings.put("sessioncapture", "false");
-		webrequestHttpHook = new RemoteJettyHttpClientV61InserterHook(platformManager, remoteIdentificationManager);
+		webrequestHttpHook = new RemoteJettyHttpClientV61InserterHook(platformManager, remoteIdentificationManager, null); // TODO
 	}
 
 	@Test

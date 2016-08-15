@@ -17,9 +17,14 @@ import org.springframework.beans.factory.support.GenericBeanDefinition;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Scope;
 import org.springframework.core.io.ClassPathResource;
 
+import com.github.kristofa.brave.Brave;
+import com.github.kristofa.brave.LoggingSpanCollector;
+import com.github.kristofa.brave.Sampler;
+import com.github.kristofa.brave.SpanCollector;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import rocks.inspectit.agent.java.config.IConfigurationStorage;
@@ -112,6 +117,25 @@ public class SpringConfiguration implements BeanDefinitionRegistryPostProcessor 
 		IExtendedSerialization serialization = new ExtendedSerializationImpl(prototypesProvider);
 		return new Client(serialization, prototypesProvider);
 	}
+
+	/**
+	 * Creates {@link Brave} instance for usage in the remote inserters and extractors.
+	 *
+	 * @param configurationStorage
+	 *            Configuration storage
+	 * @return Brave instance
+	 */
+	@Bean(name = "brave")
+	@Scope(BeanDefinition.SCOPE_SINGLETON)
+	@Autowired
+	@DependsOn("platformManager")
+	public Brave getBrave(IConfigurationStorage configurationStorage) {
+		SpanCollector collector = new LoggingSpanCollector();
+		Brave.Builder builder = new Brave.Builder(configurationStorage.getAgentName());
+		Brave brave = builder.spanCollector(collector).traceSampler(Sampler.create(1f)).build();
+		return brave;
+	}
+
 
 	/**
 	 * Registers components needed by the configuration to the Spring container.

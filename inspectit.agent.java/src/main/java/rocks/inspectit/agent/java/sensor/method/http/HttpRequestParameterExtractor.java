@@ -18,7 +18,7 @@ import rocks.inspectit.shared.all.communication.data.HttpInfo;
  *
  * @author Stefan Siegl
  */
-class HttpRequestParameterExtractor {
+public class HttpRequestParameterExtractor {
 
 	/**
 	 * The logger of this class. Initialized manually.

@@ -3,6 +3,10 @@ package rocks.inspectit.agent.java.sensor.method.remote.inserter.mq;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.kristofa.brave.ClientRequestAdapter;
+import com.github.kristofa.brave.ClientResponseAdapter;
+
+import rocks.inspectit.agent.java.config.impl.RegisteredSensorConfig;
 import rocks.inspectit.agent.java.core.IPlatformManager;
 import rocks.inspectit.agent.java.sensor.method.remote.RemoteConstants;
 import rocks.inspectit.agent.java.sensor.method.remote.inserter.RemoteDefaultInserterHook;
@@ -131,9 +135,9 @@ public class RemoteMQInserterHook extends RemoteDefaultInserterHook<RemoteMQCall
 	 * @return Index of parameter.
 	 */
 	private int getIndexForMessage(int numberParameters) {
-		if (numberParameters == 1 || numberParameters == 4) {
+		if ((numberParameters == 1) || (numberParameters == 4)) {
 			return 0;
-		} else if (numberParameters == 2 || numberParameters == 5) {
+		} else if ((numberParameters == 2) || (numberParameters == 5)) {
 			return 1;
 		}
 
@@ -183,6 +187,24 @@ public class RemoteMQInserterHook extends RemoteDefaultInserterHook<RemoteMQCall
 		if (nameObject != null) {
 			return (String) nameObject;
 		}
+		return null;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	protected ClientRequestAdapter getClientRequestAdapter(Object object, Object[] parameters, RegisteredSensorConfig rsc) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	protected ClientResponseAdapter getClientResponseAdapter(Object object, Object[] parameters, Object result, RegisteredSensorConfig rsc) {
+		// TODO Auto-generated method stub
 		return null;
 	}
 

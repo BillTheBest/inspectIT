@@ -69,7 +69,7 @@ public class RemoteApacheHttpClientV40InserterHookTest extends AbstractLogSuppor
 	public void initTestClass() {
 		Map<String, String> settings = new HashMap<String, String>();
 		settings.put("sessioncapture", "false");
-		webrequestHttpHook = new RemoteApacheHttpClientV40InserterHook(platformManager, remoteIdentificationManager);
+		webrequestHttpHook = new RemoteApacheHttpClientV40InserterHook(platformManager, remoteIdentificationManager, null); // TODO
 	}
 
 	@Test

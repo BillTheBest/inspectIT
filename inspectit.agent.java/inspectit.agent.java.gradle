@@ -30,6 +30,7 @@ ext {
 configurations {
 	compile {
 		extendsFrom configurations.agentJavaProd
+		extendsFrom configurations.agentBrave
 	}
 	testCompile {
 		extendsFrom configurations.agentJavaTest
@@ -71,6 +72,7 @@ jar {
 	into('libs') {
 		from project(':inspectit.shared.all').jar.outputs
 		from configurations.agentJavaProd
+		from configurations.agentBrave
 
 		// exclude due to the incompatibility with Java5
 		exclude('validation-api*')

@@ -1,5 +1,7 @@
 package rocks.inspectit.agent.java.sensor.method.remote.inserter.http;
 
+import com.github.kristofa.brave.Brave;
+
 import rocks.inspectit.agent.java.core.IPlatformManager;
 import rocks.inspectit.agent.java.sensor.method.remote.inserter.RemoteDefaultInserterHook;
 import rocks.inspectit.agent.java.sensor.method.remote.inserter.RemoteIdentificationManager;
@@ -21,10 +23,11 @@ public abstract class RemoteHttpInserterHook extends RemoteDefaultInserterHook<R
 	 *            The Platform manager
 	 * @param remoteIdentificationManager
 	 *            the remoteIdentificationManager.
+	 * @param brave
+	 *            Brave instance
 	 */
-	protected RemoteHttpInserterHook(IPlatformManager platformManager, RemoteIdentificationManager remoteIdentificationManager) {
-		super(platformManager, remoteIdentificationManager);
-		// TODO Auto-generated constructor stub
+	protected RemoteHttpInserterHook(IPlatformManager platformManager, RemoteIdentificationManager remoteIdentificationManager, Brave brave) {
+		super(platformManager, remoteIdentificationManager, brave);
 	}
 
 	/**

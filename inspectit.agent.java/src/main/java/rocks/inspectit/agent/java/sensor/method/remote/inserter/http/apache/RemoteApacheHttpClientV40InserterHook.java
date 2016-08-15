@@ -3,6 +3,17 @@ package rocks.inspectit.agent.java.sensor.method.remote.inserter.http.apache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.kristofa.brave.Brave;
+import com.github.kristofa.brave.ClientRequestAdapter;
+import com.github.kristofa.brave.ClientResponseAdapter;
+import com.github.kristofa.brave.http.DefaultSpanNameProvider;
+import com.github.kristofa.brave.http.HttpClientRequest;
+import com.github.kristofa.brave.http.HttpClientRequestAdapter;
+import com.github.kristofa.brave.http.HttpClientResponseAdapter;
+import com.github.kristofa.brave.http.HttpResponse;
+import com.github.kristofa.brave.http.SpanNameProvider;
+
+import rocks.inspectit.agent.java.config.impl.RegisteredSensorConfig;
 import rocks.inspectit.agent.java.core.IPlatformManager;
 import rocks.inspectit.agent.java.sensor.method.remote.RemoteConstants;
 import rocks.inspectit.agent.java.sensor.method.remote.inserter.RemoteDefaultInserterHook;
@@ -29,6 +40,11 @@ public class RemoteApacheHttpClientV40InserterHook extends RemoteHttpInserterHoo
 	 * The logger of the class.
 	 */
 	private static final Logger LOG = LoggerFactory.getLogger(RemoteApacheHttpClientV40InserterHook.class);
+
+	/**
+	 * Default span name provider.
+	 */
+	private static final SpanNameProvider SPAN_NAME_PROVIDER = new DefaultSpanNameProvider();
 
 	/**
 	 * Apache specific method name to add inspectIT header.
@@ -73,8 +89,8 @@ public class RemoteApacheHttpClientV40InserterHook extends RemoteHttpInserterHoo
 	 * @param remoteIdentificationManager
 	 *            the remoteIdentificationManager.
 	 */
-	public RemoteApacheHttpClientV40InserterHook(IPlatformManager platformManager, RemoteIdentificationManager remoteIdentificationManager) {
-		super(platformManager, remoteIdentificationManager);
+	public RemoteApacheHttpClientV40InserterHook(IPlatformManager platformManager, RemoteIdentificationManager remoteIdentificationManager, Brave brave) {
+		super(platformManager, remoteIdentificationManager, brave);
 	}
 
 	/**
@@ -139,7 +155,7 @@ public class RemoteApacheHttpClientV40InserterHook extends RemoteHttpInserterHoo
 			Object[] inspectITHeader = (Object[]) cache.invokeMethod(httpRequest.getClass(), METHOD_NAME_GET_HEADER, METHOD_PARAMETER_ONE_STRING_FIELD, httpRequest,
 					new Object[] { RemoteConstants.INSPECTIT_HTTP_HEADER }, null);
 
-			return inspectITHeader == null || inspectITHeader.length == 0;
+			return (inspectITHeader == null) || (inspectITHeader.length == 0);
 
 		} catch (Exception e) {
 			LOG.warn("Check of InspectITHeader was not possible.", e);
@@ -163,7 +179,7 @@ public class RemoteApacheHttpClientV40InserterHook extends RemoteHttpInserterHoo
 			Object result = cache.invokeMethod(httpRequest.getClass(), METHOD_NAME, METHOD_PARAMETER_TWO_STRING_FIELD, httpRequest,
 					new Object[] { RemoteConstants.INSPECTIT_HTTP_HEADER, inspectItHeader }, Boolean.FALSE);
 
-			if (result instanceof Boolean && result.equals(Boolean.FALSE)) {
+			if ((result instanceof Boolean) && result.equals(Boolean.FALSE)) {
 				throw new Exception();
 			}
 
@@ -179,4 +195,25 @@ public class RemoteApacheHttpClientV40InserterHook extends RemoteHttpInserterHoo
 			LOG.warn("Insertion of InspectITHeader was not possible. No Header Extention.", e);
 		}
 	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	protected ClientRequestAdapter getClientRequestAdapter(Object object, Object[] parameters, RegisteredSensorConfig rsc) {
+		Object httpRequest = parameters[1];
+		HttpClientRequest request = new ApacheHttpClientV40HttpRequest(httpRequest, cache);
+		return new HttpClientRequestAdapter(request, SPAN_NAME_PROVIDER);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	protected ClientResponseAdapter getClientResponseAdapter(Object object, Object[] parameters, Object result, RegisteredSensorConfig rsc) {
+		Object httpResponse = result;
+		HttpResponse response = new ApacheHttpClientV40HttpResponse(httpResponse, cache);
+		return new HttpClientResponseAdapter(response);
+	}
+
 }

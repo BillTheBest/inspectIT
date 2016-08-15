@@ -5,6 +5,17 @@ import java.net.URL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.kristofa.brave.Brave;
+import com.github.kristofa.brave.ClientRequestAdapter;
+import com.github.kristofa.brave.ClientResponseAdapter;
+import com.github.kristofa.brave.http.DefaultSpanNameProvider;
+import com.github.kristofa.brave.http.HttpClientRequest;
+import com.github.kristofa.brave.http.HttpClientRequestAdapter;
+import com.github.kristofa.brave.http.HttpClientResponseAdapter;
+import com.github.kristofa.brave.http.HttpResponse;
+import com.github.kristofa.brave.http.SpanNameProvider;
+
+import rocks.inspectit.agent.java.config.impl.RegisteredSensorConfig;
 import rocks.inspectit.agent.java.core.IPlatformManager;
 import rocks.inspectit.agent.java.sensor.method.remote.RemoteConstants;
 import rocks.inspectit.agent.java.sensor.method.remote.inserter.RemoteDefaultInserterHook;
@@ -31,6 +42,11 @@ public class RemoteHttpUrlConnectionInserterHook extends RemoteHttpInserterHook 
 	 * The logger of the class.
 	 */
 	private static final Logger LOG = LoggerFactory.getLogger(RemoteHttpUrlConnectionInserterHook.class);
+
+	/**
+	 * Default span name provider.
+	 */
+	private static final SpanNameProvider SPAN_NAME_PROVIDER = new DefaultSpanNameProvider();
 
 	/**
 	 * Cache for the <code> Method </code> elements.
@@ -65,8 +81,8 @@ public class RemoteHttpUrlConnectionInserterHook extends RemoteHttpInserterHook 
 	 * @param remoteIdentificationManager
 	 *            the remoteIdentificationManager.
 	 */
-	public RemoteHttpUrlConnectionInserterHook(IPlatformManager platformManager, RemoteIdentificationManager remoteIdentificationManager) {
-		super(platformManager, remoteIdentificationManager);
+	public RemoteHttpUrlConnectionInserterHook(IPlatformManager platformManager, RemoteIdentificationManager remoteIdentificationManager,Brave brave) {
+		super(platformManager, remoteIdentificationManager, brave);
 	}
 
 	@Override
@@ -145,6 +161,26 @@ public class RemoteHttpUrlConnectionInserterHook extends RemoteHttpInserterHook 
 		}
 
 		return returnValue;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	protected ClientRequestAdapter getClientRequestAdapter(Object object, Object[] parameters, RegisteredSensorConfig rsc) {
+		Object urlConnection = object;
+		HttpClientRequest request = new UrlConnectionHttpRequest(urlConnection, cache);
+		return new HttpClientRequestAdapter(request, SPAN_NAME_PROVIDER);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	protected ClientResponseAdapter getClientResponseAdapter(Object object, Object[] parameters, Object result, RegisteredSensorConfig rsc) {
+		Object urlConnection = object;
+		HttpResponse response = new UrlConnectionHttpResponse(urlConnection, cache);
+		return new HttpClientResponseAdapter(response);
 	}
 
 }

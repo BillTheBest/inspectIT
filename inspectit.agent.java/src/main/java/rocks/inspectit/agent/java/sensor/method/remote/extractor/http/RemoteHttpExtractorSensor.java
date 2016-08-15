@@ -4,6 +4,8 @@ import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 
+import com.github.kristofa.brave.Brave;
+
 import rocks.inspectit.agent.java.core.IPlatformManager;
 import rocks.inspectit.agent.java.hooking.IHook;
 import rocks.inspectit.agent.java.sensor.method.AbstractMethodSensor;
@@ -23,6 +25,12 @@ public class RemoteHttpExtractorSensor extends AbstractMethodSensor {
 	private RemoteHttpExtractorHook hook;
 
 	/**
+	 * Brave instance.
+	 */
+	@Autowired
+	protected Brave brave;
+
+	/**
 	 * The ID manager.
 	 */
 	@Autowired
@@ -39,7 +47,7 @@ public class RemoteHttpExtractorSensor extends AbstractMethodSensor {
 	 */
 	@Override
 	public void initHook(Map<String, Object> parameter) {
-		hook = new RemoteHttpExtractorHook(platformManager, extractor);
+		hook = new RemoteHttpExtractorHook(platformManager, extractor, brave);
 	}
 
 	public IHook getHook() {

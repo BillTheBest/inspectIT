@@ -3,6 +3,17 @@ package rocks.inspectit.agent.java.sensor.method.remote.inserter.http.jetty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.kristofa.brave.Brave;
+import com.github.kristofa.brave.ClientRequestAdapter;
+import com.github.kristofa.brave.ClientResponseAdapter;
+import com.github.kristofa.brave.http.DefaultSpanNameProvider;
+import com.github.kristofa.brave.http.HttpClientRequest;
+import com.github.kristofa.brave.http.HttpClientRequestAdapter;
+import com.github.kristofa.brave.http.HttpClientResponseAdapter;
+import com.github.kristofa.brave.http.HttpResponse;
+import com.github.kristofa.brave.http.SpanNameProvider;
+
+import rocks.inspectit.agent.java.config.impl.RegisteredSensorConfig;
 import rocks.inspectit.agent.java.core.IPlatformManager;
 import rocks.inspectit.agent.java.sensor.method.remote.RemoteConstants;
 import rocks.inspectit.agent.java.sensor.method.remote.inserter.RemoteDefaultInserterHook;
@@ -29,6 +40,11 @@ public class RemoteJettyHttpClientV61InserterHook extends RemoteHttpInserterHook
 	 * The logger of the class.
 	 */
 	private static final Logger LOG = LoggerFactory.getLogger(RemoteJettyHttpClientV61InserterHook.class);
+
+	/**
+	 * Default span name provider. //TODO not static everywhere
+	 */
+	private static final SpanNameProvider SPAN_NAME_PROVIDER = new DefaultSpanNameProvider();
 
 	/**
 	 * Cache for the <code> Method </code> elements.
@@ -63,8 +79,8 @@ public class RemoteJettyHttpClientV61InserterHook extends RemoteHttpInserterHook
 	 * @param remoteIdentificationManager
 	 *            the remoteIdentificationManager.
 	 */
-	public RemoteJettyHttpClientV61InserterHook(IPlatformManager platformManager, RemoteIdentificationManager remoteIdentificationManager) {
-		super(platformManager, remoteIdentificationManager);
+	public RemoteJettyHttpClientV61InserterHook(IPlatformManager platformManager, RemoteIdentificationManager remoteIdentificationManager, Brave brave) {
+		super(platformManager, remoteIdentificationManager, brave);
 	}
 
 	@Override
@@ -97,7 +113,7 @@ public class RemoteJettyHttpClientV61InserterHook extends RemoteHttpInserterHook
 			Object result = cache.invokeMethod(httpExchange.getClass(), METHOD_NAME, METHOD_PARAMETER_TWO_STRING_FIELD, httpExchange,
 					new Object[] { RemoteConstants.INSPECTIT_HTTP_HEADER, inspectItHeader }, Boolean.FALSE);
 
-			if (result instanceof Boolean && result.equals(Boolean.FALSE)) {
+			if ((result instanceof Boolean) && result.equals(Boolean.FALSE)) {
 				throw new Exception();
 			}
 
@@ -138,6 +154,25 @@ public class RemoteJettyHttpClientV61InserterHook extends RemoteHttpInserterHook
 		}
 
 		return returnValue;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	protected ClientRequestAdapter getClientRequestAdapter(Object object, Object[] parameters, RegisteredSensorConfig rsc) {
+		Object httpExchange = parameters[0];
+		HttpClientRequest request = new JettyHttpClientV61HttpRequest(httpExchange, cache);
+		return new HttpClientRequestAdapter(request, SPAN_NAME_PROVIDER);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	protected ClientResponseAdapter getClientResponseAdapter(Object object, Object[] parameters, Object result, RegisteredSensorConfig rsc) {
+		HttpResponse response = JettyHttpClientV61HttpResponse.INSTANCE;
+		return new HttpClientResponseAdapter(response);
 	}
 
 }
