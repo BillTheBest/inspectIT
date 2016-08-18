@@ -5,19 +5,35 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 
 import javax.xml.XMLConstants;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
 import javax.xml.bind.Marshaller;
+import javax.xml.bind.UnmarshalException;
 import javax.xml.bind.Unmarshaller;
+import javax.xml.transform.Result;
+import javax.xml.transform.Source;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
 import javax.xml.validation.Schema;
 import javax.xml.validation.SchemaFactory;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.util.CollectionUtils;
 import org.xml.sax.SAXException;
 
 /**
@@ -27,6 +43,11 @@ import org.xml.sax.SAXException;
  *
  */
 public class JAXBTransformator {
+
+	/**
+	 * Logger of the class.
+	 */
+	private static final Logger LOG = LoggerFactory.getLogger(JAXBTransformator.class);
 
 	/**
 	 * Marshals the object to the given path that must represent a path to the file.
@@ -92,6 +113,8 @@ public class JAXBTransformator {
 
 	/**
 	 * Unmarshalls the given file. The root class of the XML must be given.
+	 * <p>
+	 * No migration will be tried if schema validation fails.
 	 *
 	 * @param <T>
 	 *            Type of root object.
@@ -110,30 +133,72 @@ public class JAXBTransformator {
 	 * @throws SAXException
 	 *             If {@link SAXException} occurs during schema parsing.
 	 */
-	@SuppressWarnings("unchecked")
 	public <T> T unmarshall(Path path, Path schemaPath, Class<T> rootClass) throws JAXBException, IOException, SAXException {
+		return this.unmarshall(path, schemaPath, null, rootClass);
+	}
+
+	/**
+	 * Unmarshalls the given file. The root class of the XML must be given.
+	 * <p>
+	 * If the schema validation fails and migration path is supplied, all the files located in the
+	 * path will be used in order to migrate the XML to the current schema.
+	 *
+	 * @param <T>
+	 *            Type of root object.
+	 * @param path
+	 *            Path to file to unmarshall.
+	 * @param schemaPath
+	 *            Path to the XSD schema that will be used to validate the XML file. If no schema is
+	 *            provided no validation will be performed.
+	 * @param migrationPath
+	 *            Path that contains the XSLT migration files to use if schema validation fails.
+	 * @param rootClass
+	 *            Root class of the XML document.
+	 * @return Unmarshalled object.
+	 * @throws JAXBException
+	 *             If {@link JAXBException} occurs during loading.
+	 * @throws IOException
+	 *             If {@link IOException} occurs during loading.
+	 * @throws SAXException
+	 *             If {@link SAXException} occurs during schema parsing.
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> T unmarshall(Path path, Path schemaPath, Path migrationPath, Class<T> rootClass) throws JAXBException, IOException, SAXException {
 		if (Files.notExists(path) || Files.isDirectory(path)) {
 			return null;
 		}
 
-		JAXBContext context = JAXBContext.newInstance(rootClass);
-		Unmarshaller unmarshaller = context.createUnmarshaller();
-
-		if ((null != schemaPath) && Files.exists(schemaPath)) {
-			SchemaFactory sf = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
-			try (InputStream inputStream = Files.newInputStream(schemaPath, StandardOpenOption.READ)) {
-				Schema schema = sf.newSchema(new StreamSource(inputStream));
-				unmarshaller.setSchema(schema);
-			}
-		}
+		Unmarshaller unmarshaller = getUnmarshaller(schemaPath, rootClass);
 
 		try (InputStream inputStream = Files.newInputStream(path, StandardOpenOption.READ)) {
 			return (T) unmarshaller.unmarshal(inputStream);
+		} catch (UnmarshalException unmarshalException) {
+			try (InputStream inputStream = Files.newInputStream(path, StandardOpenOption.READ)) {
+				if (LOG.isDebugEnabled()) {
+					LOG.debug("Tring to migrate file " + path.toAbsolutePath().toString() + " due to the unmarshal exception.");
+				}
+
+				T result = (T) migrateAndUnmarshall(unmarshaller, inputStream, migrationPath);
+
+				if (null == result) {
+					if (LOG.isDebugEnabled()) {
+						LOG.debug("Migration of the file " + path.toAbsolutePath().toString() + " not possible as there are no migration files available.");
+					}
+					throw unmarshalException;
+				} else {
+					return result;
+				}
+			} catch (TransformerException e) {
+				LOG.warn("Migration of the file " + path.toAbsolutePath().toString() + " failed.", e);
+				throw unmarshalException;
+			}
 		}
 	}
 
 	/**
 	 * Unmarshalls the bytes. The root class of the XML must be given.
+	 * <p>
+	 * No migration will be tried if schema validation fails.
 	 *
 	 * @param <T>
 	 *            Type of root object.
@@ -152,12 +217,85 @@ public class JAXBTransformator {
 	 * @throws SAXException
 	 *             If {@link SAXException} occurs during schema parsing.
 	 */
-	@SuppressWarnings("unchecked")
 	public <T> T unmarshall(byte[] data, Path schemaPath, Class<T> rootClass) throws JAXBException, IOException, SAXException {
+		return this.unmarshall(data, schemaPath, null, rootClass);
+	}
+
+	/**
+	 * Unmarshalls the bytes. The root class of the XML must be given.
+	 * <p>
+	 * If the schema validation fails and migration path is supplied, all the files located in the
+	 * path will be used in order to migrate the XML to the current schema.
+	 *
+	 * @param <T>
+	 *            Type of root object.
+	 * @param data
+	 *            bytes
+	 * @param schemaPath
+	 *            Path to the XSD schema that will be used to validate the XML file. If no schema is
+	 *            provided no validation will be performed.
+	 * @param migrationPath
+	 *            Path that contains the XSLT migration files to use if schema validation fails.
+	 * @param rootClass
+	 *            Root class of the XML document.
+	 * @return Unmarshalled object.
+	 * @throws JAXBException
+	 *             If {@link JAXBException} occurs during loading.
+	 * @throws IOException
+	 *             If {@link IOException} occurs during loading.
+	 * @throws SAXException
+	 *             If {@link SAXException} occurs during schema parsing.
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> T unmarshall(byte[] data, Path schemaPath, Path migrationPath, Class<T> rootClass) throws JAXBException, IOException, SAXException {
+		Unmarshaller unmarshaller = getUnmarshaller(schemaPath, rootClass);
+
+		try (InputStream inputStream = new ByteArrayInputStream(data)) {
+			return (T) unmarshaller.unmarshal(inputStream);
+		} catch (UnmarshalException unmarshalException) {
+			try (InputStream inputStream = new ByteArrayInputStream(data)) {
+				LOG.debug("Tring to migrate data bytes due to the unmarshal exception.");
+
+				T result = (T) migrateAndUnmarshall(unmarshaller, inputStream, migrationPath);
+
+				if (null == result) {
+					LOG.debug("Migration of the data bytes not possible as there are no migration files available.");
+					throw unmarshalException;
+				} else {
+					return result;
+				}
+			} catch (TransformerException e) {
+				LOG.warn("Migration of the data bytes failed.", e);
+				throw unmarshalException;
+			}
+		}
+
+	}
+
+	/**
+	 * Creates new {@link Unmarshaller} for the given root class.
+	 * <p>
+	 * If the schema path is given then the schema will be set to the {@link Unmarshaller} for the
+	 * validation.
+	 *
+	 * @param schemaPath
+	 *            Path to the XSD schema that will be used in {@link Unmarshaller} for the
+	 *            validation.
+	 * @param rootClass
+	 *            Root class.
+	 * @return {@link Unmarshaller} instance.
+	 * @throws JAXBException
+	 *             If {@link JAXBException} occurs due to the root class not being valid..
+	 * @throws IOException
+	 *             If {@link IOException} occurs during loading of the schema file.
+	 * @throws SAXException
+	 *             If {@link SAXException} occurs during schema parsing.
+	 */
+	private Unmarshaller getUnmarshaller(Path schemaPath, Class<?> rootClass) throws JAXBException, IOException, SAXException {
 		JAXBContext context = JAXBContext.newInstance(rootClass);
 		Unmarshaller unmarshaller = context.createUnmarshaller();
 
-		if (null != schemaPath && Files.exists(schemaPath)) {
+		if ((null != schemaPath) && Files.exists(schemaPath)) {
 			SchemaFactory sf = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
 			try (InputStream inputStream = Files.newInputStream(schemaPath, StandardOpenOption.READ)) {
 				Schema schema = sf.newSchema(new StreamSource(inputStream));
@@ -165,9 +303,93 @@ public class JAXBTransformator {
 			}
 		}
 
-		try (InputStream inputStream = new ByteArrayInputStream(data)) {
-			return (T) unmarshaller.unmarshal(inputStream);
+		return unmarshaller;
+	}
+
+	/**
+	 * Tries to migrate the XML contained in the given {@link InputStream} with the XSLT files
+	 * contained in the migration path. If migration is successful the migrated XML is unmarshaled.
+	 *
+	 * @param unmarshaller
+	 *            {@link Unmarshaller} to use.
+	 * @param inputStream
+	 *            Input stream of the original XML.
+	 * @param migrationPath
+	 *            Path containing migration XSLT file(s).
+	 * @return Unmarshalled object after XML migration, or <code>null</code> if migrating is not
+	 *         possible due to the
+	 * @throws TransformerException
+	 *             If {@link TransformerException} occurs during transforming of the XML.
+	 * @throws IOException
+	 *             If migration file(s) can not be loaded.
+	 * @throws JAXBException
+	 *             If unmarshall fails with migrated XML.
+	 */
+	private Object migrateAndUnmarshall(Unmarshaller unmarshaller, InputStream inputStream, Path migrationPath) throws TransformerException, IOException, JAXBException {
+		// get migration paths
+		Collection<Path> migrationFiles = getMigrationFiles(migrationPath);
+		if (CollectionUtils.isEmpty(migrationFiles)) {
+			return null;
 		}
+
+		// create transformer factory
+		TransformerFactory factory = TransformerFactory.newInstance();
+		// input stream for the migration
+		InputStream xmlInputStream = inputStream;
+		for (Path migrationFile : migrationFiles) {
+			// take migration xslt file
+			try (InputStream xsltInputStream = Files.newInputStream(migrationFile, StandardOpenOption.READ)) {
+				// create sources (both xslt and xml to migrate)
+				Source xsltSource = new StreamSource(xsltInputStream);
+				Source toMigrate = new StreamSource(xmlInputStream);
+
+				// output stream for writing results
+				ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+				Result result = new StreamResult(outputStream);
+
+				// transform
+				Transformer transformer = factory.newTransformer(xsltSource);
+				transformer.transform(toMigrate, result);
+
+				// and save the result as the input for the next migration or unmarshaling
+				xmlInputStream = new ByteArrayInputStream(outputStream.toByteArray());
+			}
+		}
+
+		// try to marshal migrated XML
+		return unmarshaller.unmarshal(xmlInputStream);
+	}
+
+	/**
+	 * Collects the files from given directory if it exists. Files will be sorted by name.
+	 *
+	 * @param migrationPath
+	 *            Path
+	 * @return Sorted files
+	 * @throws IOException
+	 *             If directory stream fails
+	 */
+	private Collection<Path> getMigrationFiles(Path migrationPath) throws IOException {
+		if ((null == migrationPath) || !Files.exists(migrationPath) || !Files.isDirectory(migrationPath)) {
+			return Collections.emptyList();
+		}
+
+		// get directory stream and add all files
+		DirectoryStream<Path> directoryStream = Files.newDirectoryStream(migrationPath);
+		List<Path> migrationsFiles = new ArrayList<>();
+		for (Path migrationFile : directoryStream) {
+			if (!Files.isDirectory(migrationFile)) {
+				migrationsFiles.add(migrationFile);
+			}
+		}
+		// sort by name
+		Collections.sort(migrationsFiles, new Comparator<Path>() {
+			@Override
+			public int compare(Path o1, Path o2) {
+				return o1.toAbsolutePath().toString().compareTo(o2.toAbsolutePath().toString());
+			}
+		});
+		return migrationsFiles;
 	}
 
 }
